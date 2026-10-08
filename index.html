@@ -1,0 +1,1351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#0B0D10">
+<meta name="description" content="A phone-first teleprompter with auto scroll, voice follow and front-camera recording.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+<title>Cueline Prompter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a black stage with one amber cue line; the script list reads like a rundown with timecodes on the right. */
+:root{
+  --bg:#0B0D10; --surface:#14171C; --raised:#1D2128; --line:#2A3038;
+  --text:#ECEFF3; --mute:#8A94A2; --cue:#F2B33D; --cue-ink:#1A1204;
+  --rec:#FF4B4B; --ok:#47C98A; --stage:#000; --script:#F6F4EF;
+  --f-read:"Atkinson Hyperlegible",ui-sans-serif,system-ui,sans-serif;
+  --f-ui:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-num:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --r:14px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 var(--f-ui);-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--cue);outline-offset:2px}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.screen{position:fixed;inset:0;display:flex;flex-direction:column}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.eyebrow{margin:0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:600}
+
+/* ---------- Home ---------- */
+#home{overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px calc(env(safe-area-inset-bottom,0px) + 104px)}
+.wrap{width:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-top:8px}
+.hd h1{margin:2px 0 0;font-size:30px;line-height:1.1;font-weight:600;letter-spacing:-.02em}
+.iconbtn{width:44px;height:44px;display:grid;place-items:center;border-radius:12px;color:var(--text)}
+.iconbtn:hover{background:var(--raised)}
+.search{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 12px;height:46px;color:var(--mute)}
+.search input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);height:100%}
+#list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+#list li{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.item{flex:1;min-width:0;display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 16px;padding:16px 4px 16px 2px;text-align:left}
+.item .t{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.item .m{grid-column:1;font-size:13px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.item .dur{grid-row:1/span 2;grid-column:2;font-size:20px;color:var(--text)}
+.item .dur small{display:block;font-size:10px;letter-spacing:.12em;color:var(--mute);text-align:right;font-family:var(--f-ui);font-weight:600}
+.item:active{background:var(--surface)}
+.more{width:44px;display:grid;place-items:center;color:var(--mute)}
+.badge{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--cue);margin-left:6px;vertical-align:2px}
+#empty{color:var(--mute);text-align:center;padding:40px 12px;margin:0}
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 20px);height:54px;padding:0 26px;border-radius:999px;background:var(--cue);color:var(--cue-ink);font-weight:600;font-size:16px;display:flex;align-items:center;gap:8px;box-shadow:0 8px 28px rgba(0,0,0,.5)}
+.foot{font-size:12px;color:var(--mute);text-align:center;margin:8px 0 0}
+
+/* ---------- Editor ---------- */
+#editor{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.ebar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.ebar .sp{flex:1}
+.ebody{flex:1;min-height:0;display:flex;flex-direction:column;width:100%;max-width:760px;margin:0 auto;padding:12px 16px 0;gap:8px}
+#eTitle{background:none;border:0;outline:0;font-size:24px;font-weight:600;letter-spacing:-.01em;padding:6px 0;width:100%}
+#eTitle::placeholder,#eText::placeholder{color:#59626E}
+#eText{flex:1;min-height:0;resize:none;background:none;border:0;outline:0;font:18px/1.6 var(--f-read);padding:4px 0 24px}
+.estats{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);font-size:13px;color:var(--mute);max-width:760px;width:100%;margin:0 auto}
+.estats b{color:var(--text);font-weight:500}
+.estats .tip{flex-basis:100%;font-size:12px}
+.btn{height:42px;padding:0 16px;border-radius:12px;background:var(--raised);font-weight:600;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn.pri{background:var(--cue);color:var(--cue-ink)}
+.btn.danger{color:var(--rec)}
+.btn.full{width:100%;justify-content:center;height:50px}
+
+/* ---------- Prompter ---------- */
+#prompter{background:var(--stage);user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#stage{position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:grab}
+#mirrorWrap{position:absolute;inset:0}
+#prompter.mirror #mirrorWrap{transform:scaleX(-1)}
+#content{position:relative;margin:0 auto;color:var(--script);font-family:var(--f-read);font-weight:400;will-change:transform;text-wrap:pretty;overflow-wrap:break-word}
+#content p{margin:0 0 .7em}
+#content .sec{margin:.9em 0 .35em;font-family:var(--f-ui);font-weight:600;font-size:.42em;letter-spacing:.14em;text-transform:uppercase;color:var(--cue);line-height:1.3}
+#content .sec:first-child{margin-top:0}
+#content .w.said{color:#8C8A85}
+#content .w.now{color:#fff;text-decoration:underline;text-decoration-color:var(--cue);text-decoration-thickness:.07em;text-underline-offset:.16em}
+.fade{position:absolute;left:0;right:0;pointer-events:none}
+.fade.top{top:0;background:linear-gradient(to bottom,rgba(0,0,0,.92),rgba(0,0,0,.55) 70%,rgba(0,0,0,0))}
+.fade.bot{bottom:0;height:14%;background:linear-gradient(to top,rgba(0,0,0,.85),rgba(0,0,0,0))}
+#cue{position:absolute;left:0;right:0;height:0;pointer-events:none}
+#cue::before,#cue::after{content:"";position:absolute;top:-9px;border:9px solid transparent}
+#cue::before{left:0;border-left:13px solid var(--cue)}
+#cue::after{right:0;border-right:13px solid var(--cue)}
+#prompter.nocue #cue{display:none}
+
+.ui{position:absolute;z-index:5;transition:opacity .2s}
+.bar{left:0;right:0;background:rgba(14,16,20,.94);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#pTop{top:0;padding:calc(env(safe-area-inset-top,0px) + 6px) 8px 6px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line)}
+#pTop .ttl{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+#pTop .ttl b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pTop .ttl span{font-size:12px;color:var(--mute)}
+#pBottom{bottom:0;padding:8px 12px calc(env(safe-area-inset-bottom,0px) + 10px);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.inner{width:100%;max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:6px}
+.speedrow{display:flex;align-items:center;gap:6px}
+.slwrap{flex:1;min-width:0;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--mute)}
+.slwrap output{grid-column:1/-1;text-align:center;font-size:13px;color:var(--text);letter-spacing:0;font-weight:500}
+.ctlrow{display:flex;align-items:center;justify-content:space-between;gap:2px}
+.ctl{width:48px;height:48px;display:grid;place-items:center;border-radius:12px;position:relative}
+.ctl:active{background:var(--raised)}
+.ctl .lbl{position:absolute;bottom:2px;font-size:9px;letter-spacing:.06em;color:var(--mute)}
+.play{width:64px;height:64px;border-radius:50%;background:var(--cue);color:var(--cue-ink);display:grid;place-items:center}
+.play svg.i{width:28px;height:28px;fill:currentColor;stroke:none}
+.ctl.float{color:var(--cue)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:none;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line)}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--text);margin-top:-9px;border:0}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--text);border:0}
+#scrub{height:22px}
+#scrub::-webkit-slider-thumb{width:14px;height:14px;margin-top:-5px;background:var(--cue)}
+#scrub::-moz-range-thumb{width:14px;height:14px;background:var(--cue)}
+.chip{height:32px;padding:0 10px;border-radius:999px;background:var(--raised);font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--mute);flex:none}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--cue)} .dot.bad{background:var(--rec)}
+.dot.live{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+
+#mini{left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);transform:translateX(-50%);display:flex;align-items:center;gap:2px;background:rgba(20,23,28,.6);border-radius:999px;padding:2px;opacity:.55}
+#mini button{width:44px;height:40px;display:grid;place-items:center}
+#mini output{font-size:13px;min-width:74px;text-align:center}
+#progLine{left:0;bottom:0;height:2px;background:var(--cue);opacity:.6;width:0}
+#vstat{top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--mute);background:rgba(20,23,28,.6);padding:5px 9px;border-radius:999px}
+#prompter.hud-off #pTop,#prompter.hud-off #pBottom{opacity:0;pointer-events:none}
+#prompter:not(.hud-off) #mini,#prompter:not(.hud-off) #progLine{opacity:0;pointer-events:none}
+
+#countdown{inset:0;z-index:9;display:grid;place-items:center;pointer-events:none}
+#countdown span{font:700 min(40vw,220px)/1 var(--f-num);color:var(--cue);text-shadow:0 0 40px rgba(0,0,0,.8)}
+
+/* ---------- Sheets & toast ---------- */
+.scrim{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:560px;max-height:86%;overflow:auto;background:var(--surface);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;padding:8px 16px calc(env(safe-area-inset-bottom,0px) + 16px);overscroll-behavior:contain}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 10px}
+.sheet h3{margin:0 0 4px;font-size:18px;font-weight:600}
+.sheet .sub{margin:0 0 12px;color:var(--mute);font-size:13px}
+.group{display:flex;flex-direction:column;border-top:1px solid var(--line);margin-top:6px}
+.field{display:flex;flex-direction:column;gap:4px;padding:12px 0;border-bottom:1px solid var(--line)}
+.field .lab{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-weight:500}
+.field .lab .num{color:var(--mute);font-size:13px}
+.field .hint{font-size:12px;color:var(--mute)}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+.seg button{flex:1;height:36px;border-radius:7px;font-size:14px;font-weight:500;color:var(--mute)}
+.seg button[aria-pressed=true]{background:var(--raised);color:var(--text)}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.toggle{width:50px;height:30px;border-radius:999px;background:var(--line);position:relative;flex:none;transition:background .15s}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .15s}
+.toggle[aria-checked=true]{background:var(--cue)}
+.toggle[aria-checked=true]::after{transform:translateX(20px)}
+select{background:var(--bg);border:1px solid var(--line);border-radius:10px;height:40px;padding:0 10px}
+.alist{display:flex;flex-direction:column;margin-top:4px}
+.alist button{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 4px;border-bottom:1px solid var(--line);text-align:left;font-size:16px}
+.alist button:last-child{border-bottom:0}
+.alist button .num{margin-left:auto;color:var(--mute);font-size:13px}
+.alist button.danger{color:var(--rec)}
+.note{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--mute);margin:8px 0 0}
+.note b{color:var(--text);font-weight:600}
+.sheet video{width:100%;max-height:50vh;border-radius:12px;background:#000;margin:6px 0 12px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.btnrow .btn{flex:1;justify-content:center;height:48px}
+#toast{position:fixed;z-index:30;left:50%;top:calc(env(safe-area-inset-top,0px) + 56px);transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);background:#F3F1EC;color:#121417;border-radius:14px;padding:10px 12px 10px 14px;display:flex;align-items:center;gap:12px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+#toast button{font-weight:700;color:#7A4B00;white-space:nowrap;padding:6px 4px}
+.field.sw{flex-direction:row}
+#floatHold{position:fixed;left:0;bottom:0;width:2px;height:2px;overflow:hidden;opacity:.01;pointer-events:none}
+.sheet #floatVid{width:100%;aspect-ratio:16/9;border-radius:12px;background:#000;display:block;margin:6px 0 12px}
+.prog{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:12px 0 6px}
+.prog i{display:block;height:100%;width:0;background:var(--cue)}
+.steps{margin:4px 0 12px;padding-left:20px;color:var(--mute);font-size:13px;display:flex;flex-direction:column;gap:4px}
+.steps b{color:var(--text);font-weight:600}
+#pTop .iconbtn{width:40px}
+@media (orientation:landscape) and (max-height:520px){
+  #pBottom{padding-top:4px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 4px)}
+  .inner{max-width:none;flex-direction:row;flex-wrap:wrap;align-items:center;column-gap:16px;row-gap:0}
+  #scrub{flex-basis:100%}
+  .speedrow{flex:1 1 280px}
+  .ctlrow{flex:1 1 380px}
+  .play{width:52px;height:52px}
+  #toast{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 12px)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<!-- ============ HOME ============ -->
+<section id="home" class="screen" aria-label="Scripts">
+  <div class="wrap">
+    <header class="hd">
+      <div><p class="eyebrow">Cueline Prompter</p><h1>My scripts</h1></div>
+      <button class="iconbtn" id="homeMore" aria-label="More options"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></button>
+    </header>
+    <label class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Search scripts" autocomplete="off" aria-label="Search scripts"></label>
+    <ul id="list"></ul>
+    <p id="empty" hidden></p>
+    <p class="foot" id="storeNote">Scripts are saved on this device.</p>
+  </div>
+  <button class="fab" id="newBtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New script</button>
+</section>
+
+<!-- ============ EDITOR ============ -->
+<section id="editor" class="screen" hidden aria-label="Edit script">
+  <div class="ebar">
+    <button class="iconbtn" id="eBack" aria-label="Back to scripts"><svg class="i" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <span class="sp"></span>
+    <span id="eSaved" style="font-size:12px;color:var(--mute)">Saved</span>
+    <button class="btn pri" id="eRead"><svg class="i" viewBox="0 0 24 24" style="fill:currentColor;stroke:none;width:16px;height:16px"><path d="M7 4.5v15l12.5-7.5z"/></svg>Read</button>
+  </div>
+  <div class="ebody">
+    <input id="eTitle" placeholder="Script title" maxlength="120" aria-label="Script title">
+    <textarea id="eText" placeholder="Write or paste your script here." aria-label="Script text"></textarea>
+  </div>
+  <div class="estats">
+    <span><b class="num" id="eWords">0</b> words</span>
+    <span><b class="num" id="eDur">0:00</b> at <span id="eWpm">140</span> WPM</span>
+    <span class="tip">Start a line with # to make a section you can jump to.</span>
+  </div>
+</section>
+
+<!-- ============ PROMPTER ============ -->
+<section id="prompter" class="screen" hidden aria-label="Teleprompter">
+  <div id="stage">
+    <div id="mirrorWrap"><div id="content"></div></div>
+    <div class="fade top" id="fadeTop"></div>
+    <div class="fade bot"></div>
+    <div id="cue"></div>
+  </div>
+
+  <div id="pTop" class="ui bar">
+    <button class="iconbtn" id="pBack" aria-label="Back to scripts"><svg class="i" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="ttl"><b id="pTitle"></b><span id="pMeta" class="num">0%</span></div>
+    <button class="chip" id="modeChip" aria-label="Scroll mode"><span class="dot" id="modeDot"></span><span id="modeTxt">Auto</span></button>
+    <button class="iconbtn" id="pSet" aria-label="Settings"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
+  </div>
+
+  <div id="pBottom" class="ui bar">
+    <div class="inner">
+      <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Position in script">
+      <div class="speedrow">
+        <button class="ctl" id="spDn" aria-label="Slower"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <div class="slwrap"><span>SLOW</span><input type="range" id="speed" min="60" max="260" step="5" aria-label="Scrolling speed"><span>FAST</span><output id="wpmOut" class="num">140 WPM</output></div>
+        <button class="ctl" id="spUp" aria-label="Faster"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+      <div class="ctlrow">
+        <button class="ctl" id="cRestart" aria-label="Restart"><svg class="i" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/></svg></button>
+        <button class="ctl" id="cFontDn" aria-label="Smaller text"><span style="font:600 14px var(--f-read)">A</span><span class="lbl">−</span></button>
+        <button class="ctl" id="cSections" aria-label="Jump to section"><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".8"/><circle cx="4.5" cy="12" r=".8"/><circle cx="4.5" cy="18" r=".8"/></svg></button>
+        <button class="play" id="cPlay" aria-label="Play"><svg class="i" viewBox="0 0 24 24" id="playIco"><path d="M7 4.5v15l12.5-7.5z"/></svg></button>
+        <button class="ctl float" id="cFloat" aria-label="Float over camera"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor" stroke="none"/></svg><span class="lbl">FLOAT</span></button>
+        <button class="ctl" id="cFontUp" aria-label="Larger text"><span style="font:700 22px var(--f-read)">A</span><span class="lbl">+</span></button>
+        <button class="ctl" id="cFull" aria-label="Full screen"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mini" class="ui">
+    <button id="mDn" aria-label="Slower"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+    <output id="mWpm" class="num">140 WPM</output>
+    <button id="mUp" aria-label="Faster"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+  </div>
+  <div id="progLine" class="ui"></div>
+  <div id="vstat" class="ui" hidden><span class="dot" id="vDot"></span><span id="vTxt">Listening</span></div>
+
+  <div id="countdown" class="ui" hidden><span id="cdNum">3</span></div>
+</section>
+
+<div id="floatHold" aria-hidden="true"><video id="floatVid" playsinline muted preload="auto" autopictureinpicture></video></div>
+<div id="toast" role="status" aria-live="polite" hidden><span id="toastTxt"></span><button id="toastAct" hidden></button></div>
+<input type="file" id="importFile" accept="application/json,.json,.txt" hidden>
+
+<script>
+(()=>{
+"use strict";
+/* ================= Utilities ================= */
+const $=s=>document.querySelector(s);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=sec=>{sec=Math.max(0,Math.round(sec));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`};
+const nf=new Intl.NumberFormat("en-US");
+const IN_FRAME=(()=>{try{return window.self!==window.top}catch(e){return true}})();
+
+/* Words actually spoken: headings (# lines) are markers, not read aloud */
+function countWords(body){
+  let n=0;
+  for(const line of String(body||"").split("\n")){const t=line.trim(); if(!t||/^#/.test(t))continue; n+=t.split(/\s+/).filter(Boolean).length;}
+  return n;
+}
+
+/* ================= Storage ================= */
+const KEY="cueline:v1";
+const DEF={wpm:140,font:40,lh:1.35,width:94,cue:24,countdown:3,mirror:false,mode:"auto",lang:"en-US",cam:true,keys:true,cueMark:true};
+const DB={scripts:[],settings:{...DEF}};
+let storageOk=true;
+function load(){
+  try{const raw=localStorage.getItem(KEY); if(!raw)return false;
+    const d=JSON.parse(raw);
+    DB.scripts=Array.isArray(d.scripts)?d.scripts.filter(s=>s&&s.id):[];
+    Object.assign(DB.settings,DEF,d.settings||{});
+    return true;
+  }catch(e){storageOk=false;return false}
+}
+let saveWarned=false;
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(DB));storageOk=true;return true}
+  catch(e){storageOk=false;if(!saveWarned){saveWarned=true;toast("Couldn't save to this device. Export a backup from the ⋯ menu so you don't lose work.")}return false}
+}
+const S=DB.settings;
+const byId=id=>DB.scripts.find(s=>s.id===id);
+
+const SAMPLE=`# Before you hit record
+This is a sample script so you can try the prompter right away. Tap anywhere on the text to start or pause.
+
+Keep your eyes on the amber marks near the top of the screen. That line sits close to your front camera, so when you read there, it looks like you are talking to the person watching.
+
+# Finding your speed
+Use the slider at the bottom to set your pace in words per minute. Most people speak between 130 and 160 words per minute on camera. While the script is moving you can still nudge the speed with the small plus and minus buttons.
+
+Drag the text up or down with your finger to move back or ahead. When you let go, it keeps going from there.
+
+# Voice Follow
+If you switch on Voice Follow, the prompter listens and moves with you. Pause to think, and it waits. Skip a sentence, and it catches up. If the microphone stops responding, the app switches back to Auto Scroll at the pace you were speaking.
+
+# Recording
+Tap Float at the bottom of the screen. The app turns your script into a small floating window. Open your Camera app, drag the window up near the lens, start recording, and press play in the window.
+
+That's it. Delete this sample whenever you are ready, and write your first real script.`;
+
+/* ================= Toast ================= */
+let toastTimer=0;
+function toast(msg,actLabel,act,ms){
+  const t=$("#toast"),b=$("#toastAct");
+  $("#toastTxt").textContent=msg;
+  if(actLabel){b.textContent=actLabel;b.hidden=false;b.onclick=()=>{hideToast();act&&act()}}else{b.hidden=true;b.onclick=null}
+  t.hidden=false; clearTimeout(toastTimer);
+  toastTimer=setTimeout(hideToast,ms||(actLabel?7000:4200));
+}
+function hideToast(){$("#toast").hidden=true}
+
+/* ================= Sheets ================= */
+let sheetEl=null,sheetClose=null;
+function openSheet(html,bind,onClose){
+  closeSheet();
+  const scrim=document.createElement("div");
+  scrim.className="scrim";
+  scrim.innerHTML=`<div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div>`;
+  scrim.addEventListener("pointerdown",e=>{if(e.target===scrim){e.preventDefault();closeSheet()}});
+  document.body.append(scrim); sheetEl=scrim; sheetClose=onClose||null;
+  bind&&bind(scrim.querySelector(".sheet"));
+  return scrim;
+}
+let parkedSheet=null;
+function isFloating(){const v=document.getElementById("floatVid");return !!v&&(document.pictureInPictureElement===v||v.webkitPresentationMode==="picture-in-picture")}
+function closeSheet(){
+  if(!sheetEl)return;const fn=sheetClose;
+  if(sheetEl.contains(document.getElementById("floatVid"))&&isFloating()){
+    // The floating window belongs to this video element; removing it from the page would close the window.
+    sheetEl.hidden=true;if(parkedSheet&&parkedSheet!==sheetEl)parkedSheet.remove();parkedSheet=sheetEl;sheetEl=null;sheetClose=null;return;
+  }
+  sheetEl.remove();sheetEl=null;sheetClose=null;fn&&fn();
+}
+function releaseParkedSheet(){if(!parkedSheet||isFloating())return;const v=document.getElementById("floatVid");v.controls=false;document.getElementById("floatHold").append(v);parkedSheet.remove();parkedSheet=null}
+function actionSheet(title,sub,items){
+  openSheet(`<h3>${esc(title)}</h3>${sub?`<p class="sub">${esc(sub)}</p>`:""}<div class="alist">${items.map((it,i)=>`<button data-i="${i}" class="${it.danger?"danger":""}">${esc(it.label)}${it.meta?`<span class="num">${esc(it.meta)}</span>`:""}</button>`).join("")}</div>`,
+  sh=>sh.querySelectorAll("button[data-i]").forEach(b=>b.onclick=()=>{const it=items[+b.dataset.i];closeSheet();it.run&&it.run()}));
+}
+
+/* ================= Navigation ================= */
+let screen="home";
+function show(name){
+  for(const id of ["home","editor","prompter"])$("#"+id).hidden=id!==name;
+  screen=name;
+}
+function navTo(name,push=true){
+  if(push&&name!=="home"&&history.state?.screen!==name){try{history.pushState({screen:name},"")}catch(e){}}
+  show(name);
+}
+window.addEventListener("popstate",()=>{
+  if(sheetEl){closeSheet();try{history.pushState({screen},"")}catch(e){}return}
+  if(screen==="prompter"&&R.recording){toast("Stop the recording first.");try{history.pushState({screen:"prompter"},"")}catch(e){}return}
+  if(screen==="prompter")leavePrompter(false);
+  else if(screen==="editor")leaveEditor(false);
+});
+function goHome(){ if(history.state?.screen&&history.state.screen!=="home"){history.back()} else {if(screen==="prompter")leavePrompter(false);else if(screen==="editor")leaveEditor(false);} }
+
+/* ================= Home ================= */
+function scriptDur(s){return countWords(s.body)/S.wpm*60}
+function renderHome(){
+  const q=$("#q").value.trim().toLowerCase();
+  const list=[...DB.scripts].sort((a,b)=>(b.opened||b.updated||0)-(a.opened||a.updated||0))
+    .filter(s=>!q||(s.title||"").toLowerCase().includes(q)||(s.body||"").toLowerCase().includes(q));
+  $("#list").innerHTML=list.map(s=>{
+    const w=countWords(s.body);
+    const pos=s.pos>0.02&&s.pos<0.97?` · left off at ${Math.round(s.pos*100)}%`:"";
+    return `<li><button class="item" data-id="${s.id}"><span class="t">${esc(s.title||"Untitled")}${s.sample?'<span class="badge">Sample</span>':""}</span><span class="m">${nf.format(w)} words${pos}</span><span class="dur num">${fmt(w/S.wpm*60)}<small>${S.wpm} WPM</small></span></button><button class="more" data-id="${s.id}" aria-label="Options for ${esc(s.title||"Untitled")}"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></button></li>`;
+  }).join("");
+  const e=$("#empty");
+  if(!DB.scripts.length){e.hidden=false;e.innerHTML='No scripts yet. Tap <b>New script</b> to write or paste one.'}
+  else if(!list.length){e.hidden=false;e.textContent=`No scripts match “${$("#q").value.trim()}”.`}
+  else e.hidden=true;
+  $("#storeNote").textContent=storageOk?"Scripts are saved on this device.":"This browser is blocking storage. Export a backup before you close the app.";
+}
+$("#q").addEventListener("input",renderHome);
+$("#list").addEventListener("click",e=>{
+  const more=e.target.closest(".more"); const item=e.target.closest(".item");
+  if(more){const s=byId(more.dataset.id); if(s)scriptMenu(s); return}
+  if(item){openPrompter(item.dataset.id)}
+});
+function scriptMenu(s){
+  const w=countWords(s.body);
+  actionSheet(s.title||"Untitled",`${nf.format(w)} words · ${fmt(w/S.wpm*60)} at ${S.wpm} WPM`,[
+    {label:"Float over camera",run:()=>{openPrompter(s.id);setTimeout(openFloat,350)}},
+    {label:"Read on this screen",run:()=>openPrompter(s.id)},
+    {label:"Edit",run:()=>openEditor(s.id)},
+    {label:"Rename",run:()=>openEditor(s.id,true)},
+    {label:"Duplicate",run:()=>{const c={...s,id:uid(),title:(s.title||"Untitled")+" (copy)",updated:Date.now(),opened:Date.now(),pos:0,sample:false};DB.scripts.push(c);save();renderHome();toast("Duplicated.")}},
+    {label:"Delete",danger:true,run:()=>confirmDelete(s)}
+  ]);
+}
+function confirmDelete(s){
+  actionSheet(`Delete “${s.title||"Untitled"}”?`,"This can't be undone.",[
+    {label:"Delete script",danger:true,run:()=>{DB.scripts=DB.scripts.filter(x=>x.id!==s.id);save();renderHome();toast("Deleted.")}},
+    {label:"Cancel"}
+  ]);
+}
+$("#newBtn").onclick=()=>{
+  const s={id:uid(),title:"",body:"",created:Date.now(),updated:Date.now(),opened:Date.now(),pos:0};
+  DB.scripts.push(s);save();openEditor(s.id,true);
+};
+$("#homeMore").onclick=()=>{
+  actionSheet("Cueline","",[
+    {label:"Export backup",run:exportBackup},
+    {label:"Import backup or text file",run:()=>$("#importFile").click()},
+    {label:"Keyboard shortcuts",run:showKeys},
+    {label:"About voice and recording",run:showAbout}
+  ]);
+};
+function exportBackup(){
+  const data=JSON.stringify({app:"cueline",version:1,exported:new Date().toISOString(),scripts:DB.scripts,settings:DB.settings},null,2);
+  const name=`cueline-backup-${new Date().toISOString().slice(0,10)}.json`;
+  if(!IN_FRAME){
+    try{const url=URL.createObjectURL(new Blob([data],{type:"application/json"}));const a=document.createElement("a");a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);toast("Backup saved to your downloads.");return}catch(e){}
+  }
+  (navigator.clipboard?.writeText(data)||Promise.reject()).then(()=>toast("Backup copied. Paste it into a note or email to keep it.")).catch(()=>toast("Couldn't export here. Open the app from its own web address to save a backup file."));
+}
+$("#importFile").addEventListener("change",async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f)return;
+  try{
+    const txt=await f.text();
+    if(/\.json$/i.test(f.name)||txt.trim().startsWith("{")){
+      const d=JSON.parse(txt); const arr=Array.isArray(d.scripts)?d.scripts:[];
+      let n=0; for(const s of arr){ if(!s||typeof s.body!=="string")continue; const ex=byId(s.id); if(ex){ if((s.updated||0)>(ex.updated||0))Object.assign(ex,s);} else {DB.scripts.push({...s,id:s.id||uid()});} n++; }
+      save();renderHome();toast(`Imported ${n} script${n===1?"":"s"}.`);
+    }else{
+      const s={id:uid(),title:f.name.replace(/\.[^.]+$/,""),body:txt,created:Date.now(),updated:Date.now(),opened:Date.now(),pos:0};
+      DB.scripts.push(s);save();renderHome();toast("Script imported.");
+    }
+  }catch(err){toast("That file isn't a Cueline backup or a text file.")}
+});
+function showKeys(){
+  openSheet(`<h3>Keyboard shortcuts</h3><p class="sub">Work in the prompter when you're on a computer or using a Bluetooth keyboard or clicker. They never fire while you're typing.</p>
+  <div class="group">${[["Space","Play / pause"],["R","Restart"],["↑ / ↓","Faster / slower"],["+ / −","Bigger / smaller text"],["Page Down / Page Up","Jump ahead / back a few lines"],["M","Mirror text"],["F","Full screen"],["Esc","Back to scripts"]].map(([k,v])=>`<div class="field"><div class="lab"><span>${v}</span><span class="num">${k}</span></div></div>`).join("")}</div>
+  <div class="field sw"><span>Use keyboard shortcuts</span><button class="toggle" id="kToggle" role="switch" aria-checked="${S.keys}" aria-label="Use keyboard shortcuts"></button></div>`,
+  sh=>{sh.querySelector("#kToggle").onclick=ev=>{S.keys=!S.keys;ev.currentTarget.setAttribute("aria-checked",S.keys);save()}});
+}
+function showAbout(){
+  openSheet(`<h3>Voice Follow and recording</h3>
+  <p class="sub">Auto Scroll always works. Voice Follow and recording depend on what your browser allows.</p>
+  <div class="note"><b>Voice Follow</b> uses Chrome's built-in speech recognition. It needs an internet connection, and your speech is processed by Google. It works in Chrome on Android and on computers. Safari and Firefox support is limited.</div>
+  <div class="note"><b>Recording.</b> Tap <b>Float</b> in the reading screen. The script becomes a small floating window you can place over the Camera app, near the lens. Use it from a Safari tab: iPhones block floating windows for apps opened from a Home Screen icon. Voice Follow works on the full reading screen only.</div>
+  ${IN_FRAME?`<div class="note"><b>You're viewing this inside Claude.</b> Voice Follow and floating windows are turned off here. Open the app from its own web address in Safari to use them.</div>`:""}`);
+}
+
+/* ================= Editor ================= */
+let editId=null,editTimer=0;
+function openEditor(id,focusTitle){
+  const s=byId(id); if(!s)return;
+  editId=id;
+  $("#eTitle").value=s.title||""; $("#eText").value=s.body||"";
+  $("#eSaved").textContent="Saved";
+  updateEditorStats();
+  navTo("editor");
+  setTimeout(()=>{const el=focusTitle||!s.title?$("#eTitle"):$("#eText");el.focus();if(focusTitle)el.select()},50);
+}
+function updateEditorStats(){
+  const w=countWords($("#eText").value);
+  $("#eWords").textContent=nf.format(w);
+  $("#eDur").textContent=fmt(w/S.wpm*60);
+  $("#eWpm").textContent=S.wpm;
+}
+function commitEditor(){
+  const s=byId(editId); if(!s)return;
+  const t=$("#eTitle").value.trim(), b=$("#eText").value;
+  if(s.title!==t||s.body!==b){ if(s.body!==b)s.pos=0; s.title=t;s.body=b;s.updated=Date.now();s.sample=false; save(); }
+  $("#eSaved").textContent=storageOk?"Saved":"Not saved";
+}
+function onEdit(){$("#eSaved").textContent="Saving…";updateEditorStats();clearTimeout(editTimer);editTimer=setTimeout(commitEditor,400)}
+$("#eTitle").addEventListener("input",onEdit);
+$("#eText").addEventListener("input",onEdit);
+function leaveEditor(){
+  clearTimeout(editTimer);commitEditor();
+  const s=byId(editId);
+  if(s&&!s.title.trim()&&!s.body.trim()){DB.scripts=DB.scripts.filter(x=>x!==s);save();}
+  else if(s&&!s.title.trim()){s.title=(s.body.trim().split(/\s+/).slice(0,5).join(" ")||"Untitled");save();}
+  editId=null; show("home"); renderHome();
+}
+$("#eBack").onclick=goHome;
+$("#eRead").onclick=()=>{
+  clearTimeout(editTimer);commitEditor();
+  const s=byId(editId); if(!s)return;
+  if(!s.body.trim()){toast("Add some text first.");return}
+  if(!s.title.trim()){s.title=s.body.trim().split(/\s+/).slice(0,5).join(" ");save()}
+  const id=editId; editId=null;
+  openPrompter(id,true);
+};
+
+/* ================= Text normalization for voice matching ================= */
+const NUMW=["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen","twenty"];
+function norm(w){
+  w=String(w).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[’'`]/g,"").replace(/&/g,"and").replace(/[^a-z0-9]+/g,"");
+  if(/^\d+$/.test(w)&&+w<=20)w=NUMW[+w];
+  return w;
+}
+function lev1(a,b){ // edit distance <= 1
+  if(Math.abs(a.length-b.length)>1)return false;
+  let i=0,j=0,e=0;
+  while(i<a.length&&j<b.length){ if(a[i]===b[j]){i++;j++;continue} if(++e>1)return false; if(a.length>b.length)i++; else if(b.length>a.length)j++; else{i++;j++} }
+  return e+(a.length-i)+(b.length-j)<=1;
+}
+function eq(a,b){
+  if(!a||!b)return false; if(a===b)return true;
+  const m=Math.min(a.length,b.length);
+  if(m>=4&&(a.startsWith(b)||b.startsWith(a)))return true;
+  if(m>=5&&lev1(a,b))return true;
+  return false;
+}
+
+/* ================= Prompter ================= */
+const P={id:null,playing:false,counting:false,mode:"auto",y:0,drawnY:NaN,maxY:0,cueY:0,raf:0,lastT:0,lastMeta:0,hudTimer:0,ended:false,fromRec:false};
+let ALL=[],WORDS=[],NW=[],WT=[],LINES=[],SPLINE=[],SEC=[];
+const content=$("#content"),stage=$("#stage"),prompter=$("#prompter");
+
+function build(s){
+  content.textContent="";ALL=[];WORDS=[];NW=[];SEC=[];
+  const frag=document.createDocumentFragment();
+  let para=null;
+  const addWords=(el,text,head)=>{
+    const toks=text.split(/\s+/).filter(Boolean);
+    toks.forEach((tok,k)=>{
+      const sp=document.createElement("span");sp.className="w";sp.textContent=tok;
+      el.append(sp);if(k<toks.length-1)el.append(" ");
+      const rec={el:sp,w:head?(k===0?1.5:0):1,sp:-1};
+      if(!head){rec.sp=WORDS.length;WORDS.push(sp);NW.push(norm(tok))}
+      ALL.push(rec);
+    });
+  };
+  for(const raw of String(s.body||"").replace(/\r/g,"").split("\n")){
+    const t=raw.trim();
+    if(!t){para=null;continue}
+    if(/^#/.test(t)){
+      const title=t.replace(/^#+\s*/,"");para=null; if(!title)continue;
+      const h=document.createElement("div");h.className="sec";addWords(h,title,true);
+      SEC.push({title,el:h,sp:WORDS.length});frag.append(h);continue;
+    }
+    if(!para){para=document.createElement("p");frag.append(para)}else para.append(document.createElement("br"));
+    addWords(para,t,false);
+  }
+  content.append(frag);
+  // Rare words are stronger evidence of where you are than words that repeat everywhere
+  const freq=new Map();for(const w of NW)freq.set(w,(freq.get(w)||0)+1);
+  WT=NW.map(w=>clamp(1.6/(1+Math.log2(freq.get(w)||1)*0.6),0.3,1.6)*(w.length>3?1:0.6));
+}
+
+function isLandscape(){return innerWidth>innerHeight}
+function applyLook(){
+  const w=isLandscape()?Math.min(S.width,82):S.width;
+  content.style.fontSize=S.font+"px";
+  content.style.lineHeight=S.lh;
+  content.style.width=w+"%";
+  prompter.classList.toggle("mirror",!!S.mirror);
+  prompter.classList.toggle("nocue",!S.cueMark);
+}
+function layout(keepSp){
+  const sp=keepSp!=null?keepSp:(LINES.length?spAtY(P.y):0);
+  applyLook();
+  LINES=[];SPLINE=new Array(WORDS.length);
+  let cur=null,spBefore=0;
+  for(let i=0;i<ALL.length;i++){
+    const r=ALL[i],el=r.el,top=el.offsetTop,h=el.offsetHeight||S.font;
+    if(!cur||Math.abs(top-cur.top)>h*0.5){
+      cur={top,h,w:0,spStart:spBefore,spCount:0,c:0};LINES.push(cur);
+    }
+    cur.w+=r.w;
+    if(r.sp>=0){cur.spCount++;spBefore++;SPLINE[r.sp]=LINES.length-1}
+  }
+  for(const L of LINES)L.c=L.top+L.h/2;
+  P.maxY=LINES.length?LINES[LINES.length-1].c:0;
+  const H=stage.clientHeight;
+  P.cueY=Math.round(H*S.cue/100);
+  $("#cue").style.top=P.cueY+"px";
+  const lh=S.font*S.lh;
+  $("#fadeTop").style.height=Math.max(0,P.cueY-lh*0.55)+"px";
+  content.style.paddingBottom=(H-P.cueY)+"px";
+  P.y=yAtSp(sp); P.drawnY=NaN;
+}
+function lineAtY(y){
+  let lo=0,hi=LINES.length-1;
+  if(hi<0)return 0;
+  if(y<=LINES[0].c)return 0;
+  while(lo<hi){const m=(lo+hi+1)>>1; if(LINES[m].c<=y)lo=m; else hi=m-1}
+  return lo;
+}
+function spAtY(y){ // fractional spoken-word position
+  if(!LINES.length)return 0;
+  const i=lineAtY(y),L=LINES[i],N=LINES[i+1];
+  const f=N?clamp((y-L.c)/(N.c-L.c),0,1):(y>=L.c?1:0);
+  return L.spStart+f*L.spCount;
+}
+function yAtSp(sp){
+  if(!LINES.length||!WORDS.length)return 0;
+  sp=clamp(sp,0,WORDS.length);
+  if(sp>=WORDS.length)return P.maxY;
+  const li=SPLINE[Math.floor(sp)];const L=LINES[li],N=LINES[li+1];
+  const f=L.spCount?(sp-L.spStart)/L.spCount:0;
+  return N?L.c+f*(N.c-L.c):L.c;
+}
+function yOfWordLine(k){const li=SPLINE[clamp(k,0,WORDS.length-1)];return LINES[li]?LINES[li].c:0}
+function rateAt(y){ // px per second for current WPM
+  const i=lineAtY(y);let adv=0,w=0;
+  for(let j=Math.max(0,i-1);j<=Math.min(LINES.length-2,i+1);j++){adv+=LINES[j+1].c-LINES[j].c;w+=LINES[j].w}
+  if(w<=0)return 120;
+  return adv/w*S.wpm/60;
+}
+
+function openPrompter(id,fromEditor){
+  const s=byId(id); if(!s)return;
+  if(!countWords(s.body)&&!s.body.trim()){openEditor(id);toast("This script is empty. Add some text first.");return}
+  P.id=id; s.opened=Date.now(); save();
+  $("#pTitle").textContent=s.title||"Untitled";
+  build(s);
+  if(fromEditor&&history.state?.screen==="editor"){try{history.replaceState({screen:"prompter"},"")}catch(e){}show("prompter")}
+  else navTo("prompter");
+  P.playing=false;P.counting=false;P.ended=false;
+  P.mode=S.mode==="voice"&&SR?"voice":"auto";
+  setHud(true);
+  requestAnimationFrame(()=>{
+    layout(0);
+    const resume=s.pos>0.02&&s.pos<0.97;
+    if(resume){P.y=yAtSp(s.pos*WORDS.length);toast(`Picked up at ${Math.round(s.pos*100)}%.`,"Start over",restart)}
+    V.anchor=Math.floor(spAtY(P.y));paintSaid(V.anchor-1,true);
+    syncSpeedUI();updateModeChip();updatePlayIcon();
+    P.lastT=performance.now();cancelAnimationFrame(P.raf);P.raf=requestAnimationFrame(frame);
+  });
+  if(document.fonts&&document.fonts.status!=="loaded")document.fonts.ready.then(()=>{if(screen==="prompter")layout()});
+  wake(true);
+  if(S.mode==="voice"&&!SR)setTimeout(()=>toast(voiceUnavailableMsg()),300);
+}
+function leavePrompter(){
+  pause(true);
+  stopVoice();
+  savePos();
+  cancelAnimationFrame(P.raf);
+  wake(false);
+  if(document.fullscreenElement)document.exitFullscreen?.().catch(()=>{});
+  closeSheet();hideToast();
+  show("home");renderHome();
+}
+function savePos(){const s=byId(P.id);if(!s||!WORDS.length)return;const p=spAtY(P.y)/WORDS.length;s.pos=P.ended?0:clamp(p,0,1);save()}
+$("#pBack").onclick=()=>{if(R.recording){toast("Stop the recording first.");return}goHome()};
+
+function frame(t){
+  P.raf=requestAnimationFrame(frame);
+  const dt=Math.min(0.1,(t-P.lastT)/1000);P.lastT=t;
+  if(P.playing&&!(drag&&drag.moved)){
+    if(P.mode==="voice"){
+      if(V.targetY!=null){const d=V.targetY-P.y; P.y+=d*(1-Math.exp(-dt*4.5)); if(Math.abs(d)<0.3)P.y=V.targetY}
+    }else{
+      P.y+=rateAt(P.y)*dt;
+      if(P.y>=P.maxY){P.y=P.maxY;atEnd()}
+    }
+  }
+  if(P.y!==P.drawnY){content.style.transform=`translate3d(0,${(P.cueY-P.y).toFixed(1)}px,0)`;P.drawnY=P.y}
+  if(t-P.lastMeta>250){P.lastMeta=t;updateMeta()}
+}
+function updateMeta(){
+  const total=WORDS.length||1, sp=spAtY(P.y), pct=P.maxY?clamp(P.y/P.maxY,0,1):0;
+  const left=Math.max(0,total-sp)/S.wpm*60;
+  $("#pMeta").textContent=P.ended?"End of script":`${Math.round(pct*100)}% · ${fmt(left)} left · ${nf.format(WORDS.length)} words`;
+  if(!scrubbing)$("#scrub").value=Math.round(pct*1000);
+  $("#progLine").style.width=(pct*100)+"%";
+  if(R.recording)$("#recTime").textContent=fmt((Date.now()-R.t0)/1000);
+}
+function atEnd(){P.ended=true;pause();setHud(true);updateMeta()}
+
+/* ---- play / pause ---- */
+function updatePlayIcon(){
+  const on=P.playing||P.counting;
+  $("#playIco").innerHTML=on?'<path d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/>':'<path d="M7 4.5v15l12.5-7.5z"/>';
+  $("#cPlay").setAttribute("aria-label",on?"Pause":"Play");
+}
+function setHud(on){
+  prompter.classList.toggle("hud-off",!on);
+}
+function togglePlay(){ if(P.counting){cancelCountdown();return} if(P.playing)pause(); else play(); }
+function play(opts={}){
+  if(P.ended||P.y>=P.maxY-1){P.y=0;P.ended=false;V.anchor=0;paintSaid(-1,true)}
+  const needCd=S.countdown>0&&(opts.force||spAtY(P.y)<1);
+  hideToast();
+  if(needCd)return runCountdown(S.countdown,()=>begin());
+  begin();
+}
+function begin(){
+  P.playing=true;P.ended=false;P.lastT=performance.now();
+  if(P.mode==="voice")startVoice();
+  setHud(false);updatePlayIcon();
+}
+function pause(silent){
+  if(P.counting)cancelCountdown();
+  P.playing=false;
+  if(P.mode==="voice")stopVoice();
+  if(!silent)setHud(true);
+  updatePlayIcon();savePos();
+}
+function restart(){pause();P.ended=false;P.y=0;V.anchor=0;paintSaid(-1,true);P.drawnY=NaN;updateMeta()}
+let cdTimer=0;
+function runCountdown(n,done){
+  P.counting=true;updatePlayIcon();setHud(false);
+  const el=$("#countdown"),num=$("#cdNum");el.hidden=false;num.textContent=n;
+  cdTimer=setInterval(()=>{n--; if(n<=0){clearInterval(cdTimer);el.hidden=true;P.counting=false;done()} else num.textContent=n},1000);
+}
+function cancelCountdown(){clearInterval(cdTimer);$("#countdown").hidden=true;P.counting=false;setHud(true);updatePlayIcon()}
+
+/* ---- touch: tap = play/pause, drag = move through script ---- */
+let drag=null;
+stage.addEventListener("pointerdown",e=>{
+  if(e.button>0)return;
+  drag={id:e.pointerId,y0:e.clientY,last:e.clientY,moved:false,was:P.playing};
+  try{stage.setPointerCapture(e.pointerId)}catch(err){}
+});
+stage.addEventListener("pointermove",e=>{
+  if(!drag||e.pointerId!==drag.id)return;
+  if(!drag.moved&&Math.abs(e.clientY-drag.y0)>9){drag.moved=true;if(P.counting)cancelCountdown()}
+  if(drag.moved){
+    P.y=clamp(P.y-(e.clientY-drag.last),0,P.maxY);P.ended=false;
+    drag.last=e.clientY;
+  }
+});
+function endDrag(e){
+  if(!drag||e.pointerId!==drag.id)return;
+  const d=drag;drag=null;
+  if(!d.moved){togglePlay();return}
+  P.lastT=performance.now();
+  if(P.mode==="voice"){V.anchor=Math.floor(spAtY(P.y));V.targetY=P.y;paintSaid(V.anchor-1,true)}
+  savePos();updateMeta();
+}
+stage.addEventListener("pointerup",endDrag);
+stage.addEventListener("pointercancel",e=>{if(drag&&e.pointerId===drag.id){drag.moved=true;endDrag(e)}});
+stage.addEventListener("wheel",e=>{e.preventDefault();P.y=clamp(P.y+e.deltaY*0.6,0,P.maxY);P.ended=false;if(P.mode==="voice"){V.anchor=Math.floor(spAtY(P.y));V.targetY=P.y}},{passive:false});
+prompter.addEventListener("contextmenu",e=>e.preventDefault());
+
+/* ---- controls ---- */
+$("#cPlay").onclick=togglePlay;
+$("#cRestart").onclick=restart;
+function setWpm(v,announce){
+  S.wpm=clamp(Math.round(v/5)*5,60,260);save();syncSpeedUI();
+  if(announce&&prompter.classList.contains("hud-off"))flashMini();
+}
+function syncSpeedUI(){
+  $("#speed").value=S.wpm;
+  $("#wpmOut").textContent=`${S.wpm} WPM · ${fmt((WORDS.length||0)/S.wpm*60)} total`;
+  $("#mWpm").textContent=`${S.wpm} WPM`;
+}
+function flashMini(){const m=$("#mini");m.style.opacity="1";clearTimeout(m._t);m._t=setTimeout(()=>m.style.opacity="",900)}
+$("#speed").addEventListener("input",e=>setWpm(+e.target.value));
+$("#spDn").onclick=()=>setWpm(S.wpm-5);$("#spUp").onclick=()=>setWpm(S.wpm+5);
+$("#mDn").onclick=e=>{e.stopPropagation();setWpm(S.wpm-5,true)};$("#mUp").onclick=e=>{e.stopPropagation();setWpm(S.wpm+5,true)};
+function setFont(v){S.font=clamp(v,22,120);save();layout();updateMeta()}
+$("#cFontDn").onclick=()=>setFont(S.font-4);$("#cFontUp").onclick=()=>setFont(S.font+4);
+let scrubbing=false;
+$("#scrub").addEventListener("input",e=>{scrubbing=true;P.y=(+e.target.value/1000)*P.maxY;P.ended=false;if(P.mode==="voice"){V.anchor=Math.floor(spAtY(P.y));V.targetY=P.y;paintSaid(V.anchor-1,true)}});
+$("#scrub").addEventListener("change",()=>{scrubbing=false;savePos()});
+$("#cFull").onclick=toggleFull;
+function toggleFull(){
+  const el=document.documentElement;
+  if(document.fullscreenElement){document.exitFullscreen?.().catch(()=>{});return}
+  const req=el.requestFullscreen||el.webkitRequestFullscreen;
+  if(!req){toast("Full screen isn't available here. Add the app to your home screen for a full-screen view.");return}
+  Promise.resolve(req.call(el,{navigationUI:"hide"})).catch(()=>toast("Full screen isn't available here. Add the app to your home screen for a full-screen view."));
+}
+$("#cSections").onclick=()=>{
+  const total=WORDS.length||1;
+  const rows=[{label:"Beginning",meta:"0:00",run:()=>jumpSp(0)}].concat(SEC.map(x=>({label:x.title,meta:fmt(x.sp/S.wpm*60),run:()=>jumpY(LINES[lineOfEl(x.el)]?.c??yAtSp(x.sp))})));
+  actionSheet("Jump to",SEC.length?"Times are where each section starts at your current speed.":"Tip: in the editor, start a line with # to make a section you can jump to.",rows);
+};
+function lineOfEl(el){
+  const first=el.querySelector(".w");if(!first)return 0;
+  const top=first.offsetTop;
+  for(let i=0;i<LINES.length;i++)if(Math.abs(LINES[i].top-top)<2)return i;
+  return 0;
+}
+function jumpSp(sp){jumpY(yAtSp(sp))}
+function jumpY(y){P.y=clamp(y,0,P.maxY);P.ended=false;P.drawnY=NaN;V.anchor=Math.floor(spAtY(P.y));V.targetY=P.y;paintSaid(V.anchor-1,true);updateMeta();savePos()}
+$("#pSet").onclick=openSettings;
+$("#modeChip").onclick=()=>openSettings();
+
+/* ---- settings sheet ---- */
+function openSettings(){
+  const wasPlaying=P.playing; if(wasPlaying)pause();
+  const voiceOk=!!SR&&!IN_FRAME&&window.isSecureContext;
+  const langs=[["en-US","English (US)"],["en-GB","English (UK)"],["es-US","Español (EE. UU.)"],["es-MX","Español (México)"],["pt-BR","Português (Brasil)"],["fr-FR","Français"]];
+  openSheet(`
+  <h3>Prompter settings</h3>
+  <div class="group">
+    <div class="field"><div class="lab"><span>Scrolling</span></div>
+      <div class="seg" id="sMode"><button data-v="auto">Auto Scroll</button><button data-v="voice">Voice Follow</button></div>
+      <span class="hint" id="sModeHint"></span></div>
+    <div class="field" id="sLangF"><div class="lab"><span>Voice language</span></div><select id="sLang">${langs.map(([v,l])=>`<option value="${v}">${l}</option>`).join("")}</select></div>
+    <div class="field"><div class="lab"><span>Text size</span><span class="num" id="vFont"></span></div><input type="range" id="sFont" min="22" max="120" step="2"></div>
+    <div class="field"><div class="lab"><span>Line spacing</span><span class="num" id="vLh"></span></div><input type="range" id="sLh" min="1.05" max="2.2" step="0.05"></div>
+    <div class="field"><div class="lab"><span>Text width</span><span class="num" id="vW"></span></div><input type="range" id="sW" min="50" max="100" step="1"><span class="hint">Narrower text means less eye movement on camera. Sideways, it's capped at 82%.</span></div>
+    <div class="field"><div class="lab"><span>Reading line position</span><span class="num" id="vCue"></span></div><input type="range" id="sCue" min="8" max="55" step="1"><span class="hint">Keep it high when you record with the front camera, so you're looking near the lens.</span></div>
+    <div class="field sw"><span>Show reading line marks</span><button class="toggle" id="sCueMark" role="switch" aria-label="Show reading line marks"></button></div>
+    <div class="field"><div class="lab"><span>Countdown before start</span></div><div class="seg" id="sCd"><button data-v="0">Off</button><button data-v="3">3 sec</button><button data-v="5">5 sec</button></div></div>
+    <div class="field"><div class="sw"><span>Mirror text</span><button class="toggle" id="sMirror" role="switch" aria-label="Mirror text"></button></div><span class="hint">Only for teleprompter glass that reflects the screen. Leave it off when reading your phone directly.</span></div>
+  </div>`,
+  sh=>{
+    const segSet=(id,val)=>sh.querySelectorAll(`#${id} button`).forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===String(val))));
+    const tog=(id,v)=>sh.querySelector("#"+id).setAttribute("aria-checked",String(!!v));
+    const refresh=()=>{
+      segSet("sMode",S.mode);segSet("sCd",S.countdown);
+      sh.querySelector("#sModeHint").textContent=S.mode==="voice"
+        ?(voiceOk?"Listens and keeps the line you're speaking at the reading line. Needs internet. If it stops working, Auto Scroll takes over at your pace.":voiceUnavailableMsg())
+        :"Scrolls at a steady speed you set. Tap the text to pause.";
+      sh.querySelector("#sLangF").hidden=S.mode!=="voice";
+      sh.querySelector("#sLang").value=S.lang;
+      sh.querySelector("#sFont").value=S.font;sh.querySelector("#vFont").textContent=S.font+" px";
+      sh.querySelector("#sLh").value=S.lh;sh.querySelector("#vLh").textContent=(+S.lh).toFixed(2);
+      sh.querySelector("#sW").value=S.width;sh.querySelector("#vW").textContent=S.width+"%";
+      sh.querySelector("#sCue").value=S.cue;sh.querySelector("#vCue").textContent=S.cue+"% from top";
+      tog("sCueMark",S.cueMark);tog("sMirror",S.mirror);
+    };
+    refresh();
+    sh.querySelectorAll("#sMode button").forEach(b=>b.onclick=()=>{S.mode=b.dataset.v;save();setMode(S.mode==="voice"&&SR?"voice":"auto");refresh()});
+    sh.querySelectorAll("#sCd button").forEach(b=>b.onclick=()=>{S.countdown=+b.dataset.v;save();refresh()});
+    sh.querySelector("#sLang").onchange=e=>{S.lang=e.target.value;save()};
+    const rng=(id,key,num,relay)=>sh.querySelector("#"+id).addEventListener("input",e=>{S[key]=num(e.target.value);save();if(relay)layout();refresh();updateMeta()});
+    rng("sFont","font",v=>+v,true);rng("sLh","lh",v=>+v,true);rng("sW","width",v=>+v,true);rng("sCue","cue",v=>+v,true);
+    sh.querySelector("#sCueMark").onclick=()=>{S.cueMark=!S.cueMark;save();applyLook();refresh()};
+    sh.querySelector("#sMirror").onclick=()=>{S.mirror=!S.mirror;save();applyLook();refresh()};
+  });
+}
+function setMode(m){
+  if(P.mode===m){updateModeChip();return}
+  const was=P.playing;
+  if(was)pause(true);
+  P.mode=m;
+  if(m==="voice"){V.anchor=Math.floor(spAtY(P.y));V.targetY=P.y;}
+  else{paintSaid(-1,true)}
+  updateModeChip();
+  if(was)begin();
+}
+function updateModeChip(){
+  const dot=$("#modeDot"),txt=$("#modeTxt");
+  dot.className="dot";
+  if(P.mode==="voice"){txt.textContent="Voice";dot.classList.add(V.status==="hearing"||V.status==="listening"?"ok":V.status==="error"?"bad":"warn")}
+  else txt.textContent="Auto";
+  $("#vstat").hidden=P.mode!=="voice";
+}
+
+/* ---- keyboard ---- */
+document.addEventListener("keydown",e=>{
+  if(screen!=="prompter"||!S.keys||sheetEl)return;
+  const tag=(e.target.tagName||"").toLowerCase();
+  if(tag==="input"&&e.target.type!=="range"||tag==="textarea"||tag==="select"||e.target.isContentEditable)return;
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  const k=e.key;let used=true;
+  if(k===" "||k==="k")togglePlay();
+  else if(k==="r"||k==="R")restart();
+  else if(k==="ArrowUp")setWpm(S.wpm+5,true);
+  else if(k==="ArrowDown")setWpm(S.wpm-5,true);
+  else if(k==="+"||k==="=")setFont(S.font+4);
+  else if(k==="-"||k==="_")setFont(S.font-4);
+  else if(k==="PageDown"||k==="ArrowRight")jumpY(P.y+S.font*S.lh*3);
+  else if(k==="PageUp"||k==="ArrowLeft")jumpY(P.y-S.font*S.lh*3);
+  else if(k==="m"||k==="M"){S.mirror=!S.mirror;save();applyLook()}
+  else if(k==="f"||k==="F")toggleFull();
+  else if(k==="Escape"){if(!document.fullscreenElement&&!R.recording)goHome()}
+  else used=false;
+  if(used)e.preventDefault();
+});
+
+/* ---- screen wake lock, focus, rotation ---- */
+let wakeLock=null,wantWake=false;
+async function wake(on){
+  wantWake=on;
+  if(!on){try{await wakeLock?.release()}catch(e){}wakeLock=null;return}
+  try{if("wakeLock" in navigator&&!wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null})}}catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){ if(screen==="prompter"&&(P.playing||P.counting)&&!R.recording)pause(); savePos(); }
+  else if(wantWake)wake(true);
+});
+let rzT=0;
+window.addEventListener("resize",()=>{if(screen!=="prompter")return;clearTimeout(rzT);const sp=spAtY(P.y);rzT=setTimeout(()=>{layout(sp);if(P.mode==="voice")V.targetY=yOfWordLine(V.anchor)},120)});
+
+/* ================= Voice Follow ================= */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition||null;
+const V={rec:null,want:false,status:"off",anchor:0,targetY:null,errs:[],lastHeard:0,samples:[],said:-1,restartT:0};
+function voiceUnavailableMsg(){
+  if(IN_FRAME)return "Voice Follow needs the app opened from its own web address. Inside Claude, the microphone is turned off. Auto Scroll is on.";
+  if(!window.isSecureContext)return "Voice Follow needs a secure (https) address. Auto Scroll is on.";
+  if(!SR)return "This browser doesn't support Voice Follow. Use Safari on iPhone or Chrome. Auto Scroll is on.";
+  return "";
+}
+function setVStatus(st,txt){
+  V.status=st;
+  const dot=$("#vDot");dot.className="dot"+(st==="hearing"?" ok live":st==="listening"?" ok":st==="error"?" bad":st==="off"?"":" warn");
+  $("#vTxt").textContent=txt;updateModeChip();
+}
+function startVoice(){
+  if(!SR||IN_FRAME){fallback("unsupported");return}
+  V.want=true;V.errs=[];V.targetY=yOfWordLine(V.anchor);
+  if(!V.rec)V.rec=makeRec();
+  try{V.rec.lang=S.lang;V.rec.start();setVStatus("starting","Starting mic…")}catch(e){/* already started */}
+}
+function stopVoice(){
+  V.want=false;
+  if(V.rec){try{V.rec.abort()}catch(e){}}
+  if(P.mode==="voice")setVStatus("off","Paused");
+}
+function makeRec(){
+  const r=new SR();
+  r.continuous=true;r.interimResults=true;r.maxAlternatives=1;r.lang=S.lang;
+  r.onstart=()=>{if(V.want)setVStatus("listening","Listening")};
+  r.onaudiostart=()=>{if(V.want)setVStatus("listening","Listening")};
+  r.onresult=e=>{
+    if(!V.want)return;
+    let txt="";
+    for(let i=Math.max(0,e.results.length-3);i<e.results.length;i++)txt+=" "+e.results[i][0].transcript;
+    V.lastHeard=Date.now();setVStatus("hearing","Hearing you");
+    clearTimeout(V.hearT);V.hearT=setTimeout(()=>{if(V.want&&V.status==="hearing")setVStatus("listening","Listening")},1500);
+    hear(txt);
+  };
+  r.onerror=e=>{
+    const er=e.error;
+    if(er==="no-speech"||er==="aborted")return;
+    if(er==="not-allowed"||er==="service-not-allowed"){fallback(IN_FRAME?"unsupported":"denied");return}
+    if(er==="audio-capture"){fallback("nomic");return}
+    if(er==="network"){fallback("network");return}
+    const now=Date.now();V.errs=V.errs.filter(t=>now-t<20000);V.errs.push(now);
+    if(V.errs.length>=3)fallback("unstable");
+  };
+  r.onend=()=>{
+    if(!V.want){return}
+    setVStatus("reconnecting","Reconnecting…");
+    clearTimeout(V.restartT);
+    V.restartT=setTimeout(()=>{if(!V.want)return;try{r.lang=S.lang;r.start()}catch(e){V.rec=makeRec();try{V.rec.start()}catch(err){fallback("unstable")}}},150);
+  };
+  return r;
+}
+function hear(txt){
+  const toks=txt.split(/\s+/).map(norm).filter(Boolean);
+  if(!toks.length||!NW.length)return;
+  const tail=toks.slice(-6);
+  const a=V.anchor;
+  const lo=Math.max(0,a-12),hi=Math.min(NW.length-1,a+45);
+  let best=bestMatch(tail,lo,hi,a).best;
+  // nearby: two matching words are enough; further away in the window: three
+  let ok=best&&(best.m>=3||(best.m>=2&&best.j>=a-1&&best.j<=a+10));
+  if(tail.length>=4&&(!ok||best.m<4)){ // recovery: you skipped ahead (or back) beyond the window
+    const g=bestMatch(tail,0,NW.length-1,a,true);
+    const unique=g.best&&(!g.second||g.second.s<=g.best.s*0.75);
+    if(g.best&&g.best.m>=4&&unique&&(!ok||g.best.m>best.m)){best=g.best;ok=true}
+  }
+  if(!ok)return;
+  if(best.j<a-2){ // only move backwards when the phrase clearly exists in one place only
+    if(best.m<4)return;
+    const g=bestMatch(tail,0,NW.length-1,a,true);
+    if(!g.best||Math.abs(g.best.j-best.j)>3||(g.second&&g.second.s>g.best.s*0.75))return;
+  }
+  setAnchor(best.j+1);
+}
+function bestMatch(tail,from,to,a,global){
+  let best=null,second=null;const last=tail[tail.length-1],prev=tail[tail.length-2];
+  for(let j=from;j<=to;j++){
+    if(!eq(NW[j],last)&&!(prev&&eq(NW[j],prev)))continue;
+    let s=0,m=0,ti=tail.length-1,wj=j,gaps=0;
+    while(ti>=0&&wj>=0&&j-wj<12){
+      if(eq(NW[wj],tail[ti])){s+=WT[wj];m++;ti--;wj--}
+      else if(ti>0&&eq(NW[wj],tail[ti-1])){ti--;gaps++}
+      else{wj--;gaps++}
+    }
+    const dist=j-a;
+    const pen=global?0:(dist<0?-dist*0.12:dist*0.015);
+    const c={j,s,m,sc:s+m*0.5-pen-gaps*0.1};
+    if(!best||c.sc>best.sc){ if(best&&Math.abs(best.j-j)>8)second=best; best=c }
+    else if(Math.abs(c.j-best.j)>8&&(!second||c.sc>second.sc))second=c;
+  }
+  if(second&&best&&Math.abs(second.j-best.j)<=8)second=null;
+  return {best,second};
+}
+function setAnchor(k){
+  k=clamp(k,0,WORDS.length);
+  if(k!==V.anchor){
+    const now=Date.now();V.samples.push([now,k]);V.samples=V.samples.filter(x=>now-x[0]<25000);
+  }
+  V.anchor=k;
+  V.targetY=k>=WORDS.length?P.maxY:yOfWordLine(k);
+  paintSaid(k-1);
+}
+function paintSaid(upto,reset){
+  // words up to `upto` are dimmed (already said); next word gets the underline
+  if(reset){for(const w of WORDS)w.classList.remove("said","now");V.said=-1}
+  if(P.mode!=="voice"){return}
+  const from=Math.min(V.said,upto),to=Math.max(V.said,upto);
+  for(let i=Math.max(0,from+1);i<=to&&i<WORDS.length;i++)WORDS[i].classList.toggle("said",i<=upto);
+  if(upto<V.said)for(let i=Math.max(0,upto+1);i<=V.said&&i<WORDS.length;i++)WORDS[i].classList.remove("said");
+  WORDS.forEach((w,i)=>{if(w.classList.contains("now")&&i!==upto+1)w.classList.remove("now")});
+  if(WORDS[upto+1])WORDS[upto+1].classList.add("now");
+  V.said=upto;
+}
+function measuredWpm(){
+  if(V.samples.length<2)return 0;
+  const a=V.samples[0],b=V.samples[V.samples.length-1];
+  const min=(b[0]-a[0])/60000; if(min<0.12)return 0;
+  const w=(b[1]-a[1])/min; return w>=70&&w<=240?Math.round(w/5)*5:0;
+}
+function fallback(reason){
+  const wasPlaying=P.playing;
+  V.want=false;try{V.rec?.abort()}catch(e){}
+  const pace=measuredWpm();
+  if(pace)S.wpm=pace;
+  P.mode="auto";paintSaid(-1,true);
+  setVStatus("error","Voice off");updateModeChip();syncSpeedUI();save();
+  const at=` Switched to Auto Scroll at ${S.wpm} WPM.`;
+  const msg={
+    unsupported:voiceUnavailableMsg(),
+    denied:"Microphone access is blocked. Allow it in Chrome's site settings to use Voice Follow."+at,
+    nomic:"No microphone was found."+at,
+    busy:"The microphone is busy with the recording, so Voice Follow can't hear you."+at,
+    network:"Voice Follow needs an internet connection."+at,
+    unstable:"Voice recognition keeps dropping out."+at
+  }[reason]||("Voice Follow stopped."+at);
+  const canRetry=reason!=="unsupported"&&reason!=="denied";
+  toast(msg,canRetry?"Try voice again":null,()=>{setMode("voice")},9000);
+  if(wasPlaying){P.playing=true;P.lastT=performance.now()}
+}
+
+const R={recording:false,stream:null}; // in-app recording removed: the app floats over the real Camera app instead
+
+/* ================= Floating mode =================
+   iPhone Safari can only float a <video> over other apps, and it freezes the page when you leave it.
+   So the script is drawn onto a canvas, encoded to H.264 with WebCodecs, written into an MP4,
+   and that finished video is what floats over the Camera app. */
+const F={key:"",url:"",blob:null,busy:false,cancel:false};
+const FW=960,FH=540,FPS=30,LEAD=3,TAIL=3;
+const canFloat=()=>typeof VideoEncoder!=="undefined"&&typeof VideoFrame!=="undefined"&&
+  (document.pictureInPictureEnabled||"webkitSetPresentationMode" in HTMLVideoElement.prototype);
+
+function floatLines(ctx,body,px){
+  // word-wrap the script for the video frame; headings keep their amber label style
+  const maxW=FW-2*56,out=[];const lh=Math.round(px*1.22);
+  let gapNext=0;
+  for(const raw of String(body||"").replace(/\r/g,"").split("\n")){
+    const t=raw.trim();
+    if(!t){gapNext=Math.round(px*0.45);continue}
+    const head=/^#/.test(t);const text=head?t.replace(/^#+\s*/,"").toUpperCase():t;
+    if(!text)continue;
+    ctx.font=head?`600 ${Math.round(px*0.5)}px "Instrument Sans",system-ui,sans-serif`:`${px}px "Atkinson Hyperlegible",system-ui,sans-serif`;
+    const words=text.split(/\s+/);let line="";
+    const push=(str,n)=>{out.push({text:str,head,gap:gapNext,w:head?(out.length&&out[out.length-1].head?0:1.5):n,h:head?Math.round(px*0.75):lh});gapNext=0};
+    let n=0;
+    for(const w of words){
+      const test=line?line+" "+w:w;
+      if(line&&ctx.measureText(test).width>maxW){push(line,n);line=w;n=1}else{line=test;n++}
+    }
+    if(line)push(line,n);
+    if(head)gapNext=0;
+  }
+  let y=0;for(const L of out){y+=L.gap;L.top=y;L.c=y+L.h/2;y+=L.h}
+  return out;
+}
+async function makeFloatVideo(s,px,onProgress){
+  if(document.fonts){try{await document.fonts.load(`${px}px "Atkinson Hyperlegible"`);await document.fonts.load(`600 20px "Instrument Sans"`)}catch(e){}}
+  const cv=document.createElement("canvas");cv.width=FW;cv.height=FH;
+  const ctx=cv.getContext("2d",{alpha:false});
+  const lines=floatLines(ctx,s.body,px);
+  if(!lines.length)throw new Error("empty");
+  // timeline: each line takes its words at the chosen WPM (headings get a short beat)
+  const wps=S.wpm/60;let t=0;
+  for(const L of lines){L.t=t;t+=Math.max(L.w,0)/wps}
+  const readT=t,total=LEAD+readT+TAIL,N=Math.ceil(total*FPS);
+  const cueY=Math.round(FH*0.3);
+  const yAt=sec=>{
+    if(sec<=0)return lines[0].c;
+    let i=0;while(i<lines.length-1&&lines[i+1].t<=sec)i++;
+    const L=lines[i],Nx=lines[i+1];if(!Nx)return L.c;
+    const d=Nx.t-L.t;return d>0?L.c+(sec-L.t)/d*(Nx.c-L.c):Nx.c;
+  };
+  const draw=(f)=>{
+    const sec=f/FPS-LEAD,y=yAt(Math.min(sec,readT));
+    ctx.fillStyle="#000";ctx.fillRect(0,0,FW,FH);
+    const off=cueY-y;
+    ctx.textBaseline="middle";
+    for(const L of lines){
+      const yy=L.c+off;if(yy<-L.h||yy>FH+L.h)continue;
+      if(L.head){ctx.font=`600 ${Math.round(px*0.5)}px "Instrument Sans",system-ui,sans-serif`;ctx.fillStyle="#F2B33D"}
+      else{ctx.font=`${px}px "Atkinson Hyperlegible",system-ui,sans-serif`;ctx.fillStyle="#F6F4EF"}
+      ctx.fillText(L.text,56,yy);
+    }
+    // dim what you've already read
+    const g=ctx.createLinearGradient(0,0,0,cueY-px*0.55);g.addColorStop(0,"rgba(0,0,0,.92)");g.addColorStop(1,"rgba(0,0,0,.45)");
+    ctx.fillStyle=g;ctx.fillRect(0,0,FW,Math.max(0,cueY-px*0.6));
+    // reading-line marks
+    ctx.fillStyle="#F2B33D";
+    ctx.beginPath();ctx.moveTo(0,cueY-14);ctx.lineTo(20,cueY);ctx.lineTo(0,cueY+14);ctx.fill();
+    ctx.beginPath();ctx.moveTo(FW,cueY-14);ctx.lineTo(FW-20,cueY);ctx.lineTo(FW,cueY+14);ctx.fill();
+    if(sec<0){ // countdown in the corner so the first line stays readable
+      ctx.font=`700 72px "JetBrains Mono",ui-monospace,monospace`;ctx.fillStyle="#F2B33D";ctx.textAlign="right";
+      ctx.fillText(String(Math.ceil(-sec)),FW-40,FH-60);ctx.textAlign="left";
+    }
+    if(sec>readT+0.5){ctx.font=`600 26px "Instrument Sans",system-ui,sans-serif`;ctx.fillStyle="#8A94A2";ctx.textAlign="right";ctx.fillText("END",FW-40,FH-40);ctx.textAlign="left"}
+  };
+  // pick an H.264 profile this device can encode
+  let cfg=null;
+  for(const codec of ["avc1.42001f","avc1.4d001f","avc1.42e01f","avc1.640028"]){
+    const c={codec,width:FW,height:FH,bitrate:1_200_000,framerate:FPS,latencyMode:"realtime",avc:{format:"avc"}};
+    try{const r=await VideoEncoder.isConfigSupported(c);if(r.supported){cfg=c;break}}catch(e){}
+  }
+  if(!cfg)throw new Error("codec");
+  const chunks=[];let avcC=null,err=null;
+  const enc=new VideoEncoder({
+    output:(chunk,meta)=>{
+      if(meta&&meta.decoderConfig&&meta.decoderConfig.description&&!avcC){const d=meta.decoderConfig.description;avcC=new Uint8Array(d instanceof ArrayBuffer?d:d.buffer.slice(d.byteOffset,d.byteOffset+d.byteLength))}
+      const b=new Uint8Array(chunk.byteLength);chunk.copyTo(b);chunks.push({data:b,key:chunk.type==="key"});
+    },
+    error:e=>{err=e}
+  });
+  enc.configure(cfg);
+  for(let f=0;f<N;f++){
+    if(F.cancel){try{enc.close()}catch(e){}throw new Error("cancel")}
+    if(err)throw err;
+    draw(f);
+    const vf=new VideoFrame(cv,{timestamp:Math.round(f*1e6/FPS),duration:Math.round(1e6/FPS)});
+    enc.encode(vf,{keyFrame:f%(FPS*2)===0});vf.close();
+    if(enc.encodeQueueSize>6||f%20===0){
+      onProgress(f/N);
+      await new Promise(r=>setTimeout(r,0));
+      while(enc.encodeQueueSize>6)await new Promise(r=>setTimeout(r,4));
+    }
+  }
+  await enc.flush();enc.close();
+  if(err)throw err;
+  if(!chunks.length)throw new Error("codec");
+  // Some encoders hand back start-code (Annex B) data even when asked for MP4-style data. Convert it.
+  let sps=null,pps=null;
+  for(const c of chunks){
+    const d=c.data;
+    if(!(d[0]===0&&d[1]===0&&(d[2]===1||(d[2]===0&&d[3]===1))))continue;
+    const nals=splitAnnexB(d);const parts=[];
+    for(const n of nals){const t=n[0]&31;if(t===7){sps=sps||n;continue}if(t===8){pps=pps||n;continue}if(t===9)continue;
+      const l=new Uint8Array(4+n.length);l[0]=n.length>>>24;l[1]=(n.length>>>16)&255;l[2]=(n.length>>>8)&255;l[3]=n.length&255;l.set(n,4);parts.push(l)}
+    let len=0;for(const x of parts)len+=x.length;const out=new Uint8Array(len);let o=0;for(const x of parts){out.set(x,o);o+=x.length}
+    c.data=out;if(nals.some(n=>(n[0]&31)===5))c.key=true;
+  }
+  if(!avcC&&sps&&pps){
+    avcC=new Uint8Array(11+sps.length+pps.length);
+    avcC.set([1,sps[1],sps[2],sps[3],0xff,0xe1,sps.length>>8,sps.length&255],0);avcC.set(sps,8);
+    avcC.set([1,pps.length>>8,pps.length&255],8+sps.length);avcC.set(pps,11+sps.length);
+  }
+  if(!avcC)throw new Error("codec");
+  onProgress(1);
+  return {blob:muxMp4(chunks,avcC,FW,FH,FPS),seconds:total};
+}
+
+function splitAnnexB(d){
+  const out=[];let i=0,start=-1;
+  while(i+2<d.length){
+    if(d[i]===0&&d[i+1]===0&&d[i+2]===1){if(start>=0){let e=i;while(e>start&&d[e-1]===0)e--;out.push(d.subarray(start,e))}i+=3;start=i}
+    else i++;
+  }
+  if(start>=0&&start<d.length)out.push(d.subarray(start));
+  return out.filter(n=>n.length);
+}
+/* Minimal MP4 writer for one H.264 track: ftyp + moov (front, so it starts playing at once) + mdat */
+function muxMp4(chunks,avcC,w,h,fps){
+  const u32=n=>[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255],u16=n=>[(n>>8)&255,n&255];
+  const str=t=>[...t].map(c=>c.charCodeAt(0));
+  const box=(type,...parts)=>{let len=8;const flat=[];for(const p of parts){const a=p instanceof Uint8Array?p:Uint8Array.from(p);flat.push(a);len+=a.length}
+    const out=new Uint8Array(len);out.set(u32(len),0);out.set(str(type),4);let o=8;for(const a of flat){out.set(a,o);o+=a.length}return out};
+  const full=(type,ver,flags,...parts)=>box(type,[ver,(flags>>16)&255,(flags>>8)&255,flags&255],...parts);
+  const TS=fps*1000,DT=1000,n=chunks.length,dur=n*DT,durMs=Math.round(n/fps*1000);
+  const matrix=[...u32(0x10000),...u32(0),...u32(0),...u32(0),...u32(0x10000),...u32(0),...u32(0),...u32(0),...u32(0x40000000)];
+  const ftyp=box("ftyp",str("isom"),u32(512),str("isomiso2avc1mp41"));
+  const build=co=>{
+    const avc1=box("avc1",[0,0,0,0,0,0],u16(1),u16(0),u16(0),new Array(12).fill(0),u16(w),u16(h),u32(0x480000),u32(0x480000),u32(0),u16(1),new Array(32).fill(0),u16(0x18),u16(0xffff),box("avcC",avcC));
+    const sizes=[];for(const c of chunks)sizes.push(...u32(c.data.length));
+    const keys=[];chunks.forEach((c,i)=>{if(c.key)keys.push(...u32(i+1))});
+    const stbl=box("stbl",
+      full("stsd",0,0,u32(1),avc1),
+      full("stts",0,0,u32(1),u32(n),u32(DT)),
+      full("stss",0,0,u32(keys.length/4),keys),
+      full("stsc",0,0,u32(1),u32(1),u32(n),u32(1)),
+      full("stsz",0,0,u32(0),u32(n),sizes),
+      full("stco",0,0,u32(1),u32(co)));
+    const minf=box("minf",full("vmhd",0,1,[0,0,0,0,0,0,0,0]),box("dinf",full("dref",0,0,u32(1),full("url ",0,1))),stbl);
+    const mdia=box("mdia",full("mdhd",0,0,u32(0),u32(0),u32(TS),u32(dur),u16(0x55c4),u16(0)),
+      full("hdlr",0,0,u32(0),str("vide"),new Array(12).fill(0),str("Cueline\0")),minf);
+    const trak=box("trak",full("tkhd",0,3,u32(0),u32(0),u32(1),u32(0),u32(durMs),new Array(8).fill(0),u16(0),u16(0),u16(0),u16(0),matrix,u32(w<<16),u32(h<<16)),mdia);
+    const mvhd=full("mvhd",0,0,u32(0),u32(0),u32(1000),u32(durMs),u32(0x10000),u16(0x100),new Array(10).fill(0),matrix,new Array(24).fill(0),u32(2));
+    return box("moov",mvhd,trak);
+  };
+  const moovLen=build(0).length;
+  const moov=build(ftyp.length+moovLen+8);
+  let dataLen=0;for(const c of chunks)dataLen+=c.data.length;
+  const mdatHead=new Uint8Array(8);mdatHead.set(u32(8+dataLen),0);mdatHead.set(str("mdat"),4);
+  return new Blob([ftyp,moov,mdatHead,...chunks.map(c=>c.data)],{type:"video/mp4"});
+}
+
+function parkFloatVid(){
+  const v=$("#floatVid");
+  const floating=document.pictureInPictureElement===v||v.webkitPresentationMode==="picture-in-picture";
+  if(v.parentNode!==$("#floatHold"))$("#floatHold").append(v); // moving keeps the element alive
+  if(floating){const p=v.play();if(p&&p.catch)p.catch(()=>{});v.pause()}
+}
+const isStandalone=()=>navigator.standalone===true||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||(window.matchMedia&&matchMedia("(display-mode: fullscreen)").matches);
+function enterPip(v){
+  // Must run synchronously inside the tap. iPhone Safari's own method first, then the standard one.
+  if(isStandalone())return Promise.reject(Object.assign(new Error("standalone"),{name:"Standalone"}));
+  v.muted=true;
+  const wk=typeof v.webkitSupportsPresentationMode==="function";
+  if(wk&&v.webkitSupportsPresentationMode("picture-in-picture")){
+    const pp=v.play();if(pp&&pp.catch)pp.catch(()=>{});
+    v.webkitSetPresentationMode("picture-in-picture");
+    return Promise.resolve();
+  }
+  if(v.requestPictureInPicture&&document.pictureInPictureEnabled){
+    const pp=v.play();if(pp&&pp.catch)pp.catch(()=>{});
+    return v.requestPictureInPicture();
+  }
+  return Promise.reject(Object.assign(new Error("not eligible"),{name:wk?"NotEligible":"NoPip"}));
+}
+function pipErrorText(e){
+  if(e&&e.name==="Standalone")return "Floating doesn't work when the app is opened from a Home Screen icon. That's an iPhone limit. Open your GitHub link in a Safari tab instead.";
+  if(e&&(e.name==="NotEligible"||e.name==="NotSupportedError"))return "Safari won't float this video yet. Tap play on the preview, then tap Open floating window again.";
+  if(e&&e.name==="InvalidStateError")return "The video is still loading. Wait a second, then tap Open floating window again.";
+  if(e&&e.name==="NotAllowedError")return "Safari blocked it because too much time passed after your tap. Tap Open floating window again.";
+  if(e&&e.name==="NoPip")return "This browser can't float video. Use Safari on iPhone.";
+  return "Couldn't open the floating window ("+(e&&e.name||"unknown")+"). Tap play on the preview, then use its picture-in-picture button.";
+}
+const floatVid=$("#floatVid");
+floatVid.addEventListener("enterpictureinpicture",()=>{floatVid.pause();try{floatVid.currentTime=0}catch(e){}});
+floatVid.addEventListener("webkitpresentationmodechanged",()=>{if(floatVid.webkitPresentationMode==="picture-in-picture"){floatVid.pause();try{floatVid.currentTime=0}catch(e){}}});
+floatVid.addEventListener("leavepictureinpicture",()=>{floatVid.pause();setTimeout(releaseParkedSheet,50)});
+floatVid.addEventListener("webkitpresentationmodechanged",()=>{if(floatVid.webkitPresentationMode==="inline")setTimeout(releaseParkedSheet,50)});
+
+function openFloat(){
+  if(parkedSheet){if(isFloating()){toast("The floating window is already open.");return}releaseParkedSheet()}
+  if(P.playing||P.counting)pause();
+  const s=byId(P.id);if(!s)return;
+  if(!canFloat()){
+    openSheet(`<h3>Float over your camera</h3><div class="note">This browser can't make a floating prompter. On iPhone it needs iOS 16.4 or later in Safari. On a computer, use a recent Chrome.</div>`);return;
+  }
+  if(!S.floatSize)S.floatSize="large";
+  const words=countWords(s.body);
+  const key=()=>[s.id,s.updated,S.wpm,S.floatSize].join("|");
+  openSheet(`<h3>Float over your camera</h3>
+    <p class="sub">Turns this script into a scrolling video at <b class="num">${S.wpm} WPM</b> (${fmt(words/S.wpm*60)}). The video floats on top of the Camera app, so you can record with any camera and any mode.</p>
+    ${isStandalone()?'<div class="note"><b>Open this in a Safari tab.</b> iPhones block floating windows for apps opened from a Home Screen icon.</div>':""}
+    <div id="fStage"></div>`,
+  sh=>{
+    const stage=sh.querySelector("#fStage");
+    const ready=()=>{
+      stage.innerHTML=`<div id="fVidSlot"></div>
+        <button class="btn pri full" id="fOpen">Open floating window</button>
+        <div class="note" id="fErr" role="alert" hidden></div>
+        <ol class="steps">
+          <li>Tap <b>Open floating window</b>. It opens paused at the start.</li>
+          <li>Swipe up to go home and open <b>Camera</b>. Drag the window to the top edge, near the lens. Pinch to make it bigger.</li>
+          <li>Start recording, then tap <b>play</b> in the window. A 3-second countdown runs first.</li>
+          <li>Use the window's pause and 15-second skip buttons if you need them.</li>
+        </ol>
+        <button class="btn full" id="fRedo">Make it again at a different speed</button>`;
+      const slot=stage.querySelector("#fVidSlot");floatVid.controls=true;slot.append(floatVid);
+      if(floatVid.readyState<1){try{floatVid.load()}catch(e){}}
+      const btn=stage.querySelector("#fOpen");
+      const ok=()=>{btn.disabled=false;btn.textContent="Open floating window"};
+      if(floatVid.readyState>=1)ok();
+      else{btn.disabled=true;btn.textContent="Loading video…";
+        floatVid.addEventListener("loadedmetadata",ok,{once:true});
+        setTimeout(ok,2500);}
+      floatVid.onloadeddata=()=>{const n=stage.querySelector("#fErr");if(n&&/couldn't play/.test(n.textContent))n.hidden=true};
+      floatVid.onerror=()=>{const c=floatVid.error&&floatVid.error.code;stage.querySelector("#fErr").hidden=false;stage.querySelector("#fErr").textContent=`This phone couldn't play the video it made (error ${c||"?"}). Send me this message and I'll fix it.`};
+      btn.onclick=()=>{enterPip(floatVid).catch(e=>{const n=stage.querySelector("#fErr");n.hidden=false;n.textContent=pipErrorText(e)})};
+      stage.querySelector("#fRedo").onclick=()=>{closeSheet();toast("Set the speed with the slider, then tap the float button again.")};
+    };
+    const setup=()=>{
+      stage.innerHTML=`<div class="field" style="border-top:1px solid var(--line)"><div class="lab"><span>Text size in the window</span></div>
+          <div class="seg" id="fSize"><button data-v="large">Large · 4 lines</button><button data-v="huge">Huge · 3 lines</button></div></div>
+        <div class="note">The speed is set when the video is made. Voice Follow and live speed changes don't work in the floating window.</div>
+        <button class="btn pri full" id="fMake" style="margin-top:12px">Make floating prompter</button>`;
+      const seg=()=>stage.querySelectorAll("#fSize button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S.floatSize)));seg();
+      stage.querySelectorAll("#fSize button").forEach(b=>b.onclick=()=>{S.floatSize=b.dataset.v;save();seg()});
+      stage.querySelector("#fMake").onclick=make;
+    };
+    const make=async()=>{
+      if(F.key===key()&&F.url){floatVid.src=F.url;ready();return}
+      F.busy=true;F.cancel=false;
+      stage.innerHTML=`<div class="prog"><i id="fBar"></i></div><p class="sub" id="fPct">Making video… 0%</p><button class="btn full" id="fCancel">Cancel</button>`;
+      stage.querySelector("#fCancel").onclick=()=>{F.cancel=true};
+      const bar=stage.querySelector("#fBar"),pct=stage.querySelector("#fPct");
+      try{
+        const t0=performance.now();
+        const r=await makeFloatVideo(s,S.floatSize==="huge"?92:72,f=>{bar.style.width=(f*100).toFixed(1)+"%";pct.textContent=`Making video… ${Math.floor(f*100)}%`});
+        if(F.url)URL.revokeObjectURL(F.url);
+        F.url=URL.createObjectURL(r.blob);F.blob=r.blob;F.key=key();
+        floatVid.src=F.url;floatVid.load();
+        console.log(`float video: ${r.seconds.toFixed(1)}s in ${((performance.now()-t0)/1000).toFixed(1)}s, ${(r.blob.size/1048576).toFixed(1)} MB`);
+        if(sheetEl)ready();
+      }catch(e){
+        if(e&&e.message==="cancel"){if(sheetEl)setup();}
+        else if(sheetEl)stage.innerHTML=`<div class="note">${e&&e.message==="codec"?"This device can't encode the video. Floating mode needs iOS 16.4 or later.":"Something went wrong making the video. Try again, or try a shorter script."}</div>`;
+      }finally{F.busy=false}
+    };
+    if(F.key===key()&&F.url){floatVid.src=F.url;ready()}else setup();
+  },()=>{F.cancel=true;floatVid.controls=false;parkFloatVid()});
+}
+$("#cFloat").onclick=openFloat;
+
+/* ================= Boot ================= */
+const had=load();
+if(!had&&!DB.scripts.length){DB.scripts.push({id:uid(),title:"Sample: your first take",body:SAMPLE,created:Date.now(),updated:Date.now(),opened:Date.now(),pos:0,sample:true});save()}
+try{navigator.storage?.persist?.()}catch(e){}
+try{history.replaceState({screen:"home"},"")}catch(e){}
+renderHome();
+if("serviceWorker" in navigator&&!IN_FRAME&&location.protocol==="https:"){navigator.serviceWorker.register("sw.js").catch(()=>{})}
+window.__cueline={DB,P,V,hear,bestMatch,muxMp4,get NW(){return NW},get WT(){return WT},setMode,spAtY,yAtSp,layout,get LINES(){return LINES},get WORDS(){return WORDS}};
+})();
+</script>
+
+</body>
+</html>
